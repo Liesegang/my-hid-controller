@@ -6,6 +6,7 @@ import { ActiveWindow } from '@paymoapp/active-window'
 import { join } from 'path'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import icon from '../../resources/icon.png?asset'
+import { openWindowsSync } from 'get-windows'
 
 const VENDOR_ID = 0xf055
 const PRODUCT_ID = 0xcafe
@@ -102,11 +103,19 @@ app.whenReady().then(() => {
   const devInfo = HID.devices().find((d) => d.vendorId === VENDOR_ID && d.productId === PRODUCT_ID)
 
   if (!devInfo) {
-    console.error('HID デバイスが見つからないよ～')
+    console.error('HID device not found')
+    if (win && !win.webContents.isDestroyed()) {
+      win.webContents.send('device-status', 'disconnected')
+    }
     return
   }
 
   const device = new HID.HID(devInfo.path!)
+  console.log(`[Main] HID device found: ${devInfo.path}`)
+  if (win && !win.webContents.isDestroyed()) {
+    win.webContents.send('device-status', 'connected')
+  }
+
   device.on('data', (data) => {
     const code = data[0] // 1 バイト目をボタン ID と想定
     console.log(`[Main] HID data received: ${data.toString('hex')}, extracted code: ${code}`)
@@ -124,6 +133,13 @@ app.whenReady().then(() => {
       } else if (win.webContents.isDestroyed()) {
         console.error(`[Main] - win.webContents ID: ${win.webContents.id} is destroyed.`)
       }
+    }
+  })
+
+  device.on('error', (err) => {
+    console.error('[Main] HID device error:', err)
+    if (win && !win.webContents.isDestroyed()) {
+      win.webContents.send('device-status', 'disconnected')
     }
   })
 
@@ -179,11 +195,32 @@ if (process.platform === 'darwin') {
 }
 
 let lastWindowId: string | null = null
+const windowHistory = new Set<string>()
 ActiveWindow.subscribe((winInfo: ActiveWinInfo | null) => {
   if (!winInfo) return
-  const identifier = `${winInfo.application}:${winInfo.title}`
+  const identifier = winInfo.application
   if (identifier !== lastWindowId) {
     lastWindowId = identifier
     console.log(`[ActiveWindow] ${identifier}`)
+    windowHistory.add(identifier)
+    if (win && win.webContents && !win.webContents.isDestroyed()) {
+      win.webContents.send('active-app', identifier)
+    }
+  }
+})
+
+// IPC to list currently open windows via `get-windows` (ESM module)
+ipcMain.handle('list-windows', async () => {
+  try {
+    const wins = openWindowsSync({
+      accessibilityPermission: true,
+      screenRecordingPermission: true
+    })
+    console.log('[Main] list-windows', wins)
+    const ids = wins.map((w: any) => w.owner?.name || '').filter((id: string) => id)
+    return Array.from(new Set(ids)) as string[]
+  } catch (err) {
+    console.error('[Main] list-windows error:', err)
+    return Array.from(windowHistory)
   }
 })
