@@ -18,11 +18,22 @@ function App(): ReactElement {
     { id: 8, name: 'Button 8', description: 'Find', type: 'shortcut', shortcut: 'Cmd+F' }
   ]
 
+  const STORAGE_KEY = 'macroConfigsByApp'
+
+  const loadInitialConfigs = (): Record<string, MacroConfig[]> => {
+    try {
+      const saved = JSON.parse(localStorage.getItem(STORAGE_KEY) || 'null')
+      if (saved && typeof saved === 'object') return saved
+    } catch {
+      /* ignore malformed JSON */
+    }
+    return { default: defaultConfig }
+  }
+
   const [activeApp, setActiveApp] = useState<string>('default')
   const [selectedApp, setSelectedApp] = useState<string>('default')
-  const [configsByApp, setConfigsByApp] = useState<Record<string, MacroConfig[]>>({
-    default: defaultConfig
-  })
+  const [configsByApp, setConfigsByApp] =
+    useState<Record<string, MacroConfig[]>>(loadInitialConfigs)
 
   const currentConfigs = configsByApp[selectedApp] ?? configsByApp['default']
 
@@ -138,6 +149,10 @@ function App(): ReactElement {
 
     return <ConfigModal config={config} onSave={handleSave} onClose={onClose} />
   }
+
+  useEffect(() => {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(configsByApp))
+  }, [configsByApp])
 
   return (
     <div className="min-h-screen bg-gray-900 p-8">
