@@ -37,7 +37,6 @@ function App(): ReactElement {
 
   const currentConfigs = configsByApp[selectedApp] ?? configsByApp['default']
 
-  // refs for stable access inside single effect
   const configsRef = useRef(configsByApp)
   const activeAppRef = useRef(activeApp)
 
